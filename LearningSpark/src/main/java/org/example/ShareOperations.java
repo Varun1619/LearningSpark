@@ -1,15 +1,21 @@
 package org.example;
 
+import org.apache.spark.internal.config.R;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.Dataset;
 
 import javax.xml.crypto.Data;
+import java.awt.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Properties;
+import org.apache.spark.sql.expressions.*;
+import org.apache.spark.sql.expressions.Window;
+
+import static org.apache.spark.sql.functions.*;
 public class ShareOperations {
 
     public static void main(String[] args) throws Exception {
@@ -42,7 +48,7 @@ public class ShareOperations {
                 .withColumnRenamed("Adj Close","TeslaAdjClose")
                 .withColumnRenamed("Volume","TeslaVolume");
 
-        Dataset<Row> ferrariChangedColNames = ferrariRawData.withColumnRenamed("Open","FerraiOpen")
+        Dataset<Row> ferrariChangedColNames = ferrariRawData.withColumnRenamed("Open","FerrariOpen")
                 .withColumnRenamed("High","FerrariHigh")
                 .withColumnRenamed("Low","FerrariLow")
                 .withColumnRenamed("Close","FerrariClose")
@@ -53,14 +59,39 @@ public class ShareOperations {
         //Joining both the tables on the basis of Date to compare share prices on the same Date
         Dataset<Row> teslaFerrariJoinedData = teslaChangedColNames.join(ferrariChangedColNames,"Date");
 
-//        teslaRawData.show();
-//        teslaChangedColNames.show();
-//        ferrariRawData.show();
-//        ferrariChangedColNames.show();
 
-        System.out.println("Joined Data");
-        teslaFerrariJoinedData.show();
-        teslaFerrariJoinedData.write().jdbc(url,"teslaFerraiJoinedData",connectionProperty);
+        //Doing Basic statistics operations....
+        //Mean of Close, High, Open, Close
+
+        Dataset<Row> meanSharePrices = teslaFerrariJoinedData.groupBy()
+                .agg(mean("TeslaOpen"),mean("TeslaHigh"),mean("TeslaLow"),mean("TeslaClose"),
+                        mean("FerrariOpen"), mean("FerrariHigh"), mean("FerrariLow"),mean("FerrariCLose"));
+
+        meanSharePrices.show();
+
+
+        //testing the correlation between the closing price of Tesla
+        double correlationTeslaCloseVolume = teslaChangedColNames.stat().corr("TeslaClose","TeslaVolume");
+
+        //testing the correlation between the closing price of Ferrari
+        double correlationFerrariCloseVolume = ferrariChangedColNames.stat().corr("FerrariClose","FerrariVolume");
+
+        //testing the correlation between the closing price of Tesla and Ferrari
+        double correlationFerrariTesalClose = teslaFerrariJoinedData.stat().corr("FerrariClose","TeslaClose");
+
+        System.out.println(correlationTeslaCloseVolume);
+        System.out.println(correlationFerrariCloseVolume);
+        System.out.println(correlationFerrariTesalClose);
+
+        //Analyzing the volume of the two companies.
+        Dataset<Row> volumeCount = teslaFerrariJoinedData.groupBy()
+                .agg(sum("TeslaVolume"),sum("FerrariVolume"));
+        volumeCount.show();
+
+        //Window Technique to find the percentage change in volume
+
+
+        teslaFerrariJoinedData.write().mode(SaveMode.Overwrite).jdbc(url,"teslaFerraiJoinedData",connectionProperty);
     }
 
 }
